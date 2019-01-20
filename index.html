@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>D3 Page Template</title>
+		<script type="text/javascript" src="d3.js"></script>
+
+		<style>
+			.axis path,
+			.axis line {
+				shape-rendering: crispEdges;
+				fill: none;
+				stroke: #000;
+				stroke-width: 0.5px;
+			}
+
+			.axis text {
+				font-family: Helvetica;
+				font-size: 5px;
+			}
+
+		</style>
+	</head>
+
+	<body>
+		<script type="text/javascript">
+			
+            // width and height (200 x 120 looks good)
+			var w = 300;
+			var h = 220;
+            
+            // load data
+			var dataset = [];
+
+			var myGene = [
+				{
+					type: "exon",
+					start: 130444929,
+					end: 130444995
+				},
+				{
+					type: "intron",
+					start: 130444996,
+					end: 130452223
+				},
+				{
+					type: "exon",
+					start: 130452224,
+					end: 130452333
+				},
+				{
+					type: "intron",
+					start: 130452334,
+					end: 130454304
+				}
+			];
+
+			var myPrimers = [
+				{
+					name: "5352",
+					start: 130445352,
+					end: 130445498
+				},
+				{
+					name: "5781",
+					start: 130445781,
+					end: 130445921
+				},
+				{
+					name: "6155",
+					start: 130446155,
+					end: 130446300
+				},
+				{
+					name: "6236",
+					start: 130446236,
+					end: 130446390
+				}
+				/*{
+				{
+					name: "SBE",
+					start: 130444180,
+					end: 130444347
+				}
+
+					name: "enChIP",
+					start: 130446211,
+					end: 130446349
+				}
+				*/
+			];
+
+			d3.tsv("merged_short.tsv", function(d){
+				return{
+					chromosome: d.chromosome,
+					start: +d.start,
+					end: +d.end,
+					GM12878: +d.GM12878,
+					H1HESC: +d.H1HESC,
+					HSMM: +d.HSMM,
+					HUVEC: +d.HUVEC,
+					K562: +d.K562,
+					NHEK: +d.NHEK,
+					NHLF: +d.NHLF
+				};
+			})
+			.then(function(data){
+				dataset = data;
+				console.log(dataset);
+				generateVisualization();
+				generateAnnotations();
+			});
+			
+			var colors = d3.scaleOrdinal(["#9da03c","#b25fbc","#58a968","#c75980","#6882d0","#c38341","#cc5143"]);
+			
+			function generateVisualization(data) {
+
+				// setup svg
+				var padding = 40;
+				
+				// the start and end locations of the plotted sequence
+				var seqStart = d3.min(dataset, function(d) { return d.start; } ); 
+				var seqEnd = d3.max(dataset, function(d) { return d.end; } );
+				
+				var maxPeak = 200;
+
+				var xScale = d3.scaleLinear()
+					.domain([seqStart,seqEnd])
+					.range([0,w-padding]);
+
+				var yScale = d3.scaleLinear()
+					.domain([0,maxPeak])
+					.range([0,h-padding]);
+            
+				//Create SVG element
+				var svg = d3.select("body")
+					.append("svg")
+					.attr("width", w)
+					.attr("height", h);
+
+				verticalPadding = 5;
+				leftPadding = 5;
+				axisPadding = 5;
+				areaOpacity = 1;
+					
+				var tracks = svg.append("g");
+				var gene = svg.append("g");
+				var primers = svg.append("g");
+
+
+				var lines = [];
+				var myColumns = dataset.columns.slice(3, dataset.columns.length); // drop first 3 columns
+				var nCols = myColumns.length - 1;
+				for (var myCol = 0; myCol <= nCols; myCol++) {
+					
+					lines[myCol] = d3.area()
+						.defined(function(d){return d;})
+						.curve(d3.curveMonotoneX)
+						.x(function(d, i) {return xScale(d.start) + leftPadding;})
+						.y0(function(d){return h - padding - axisPadding - ((nCols - myCol)*verticalPadding);})
+						.y1(function(d) {return h - padding - axisPadding - ((nCols - myCol)*verticalPadding) - yScale(d[myColumns[myCol]]);});
+					
+					tracks.append("path")
+						.datum(dataset)
+						.attr("class", "area")
+						.attr("title", myColumns[myCol])
+						.attr("data-legend", myColumns[myCol])
+						.attr("fill", colors(myCol))
+						.attr("fill-opacity", areaOpacity)
+						.attr("d", lines[myCol]);	
+				}
+
+				var xAxis = d3.axisBottom()
+					.ticks(3)
+    				.scale(xScale);
+					
+				svg.append("g")
+					.attr("class", "axis")
+					.attr("transform", "translate(" + leftPadding + "," + (h - padding) + ")")
+					.call(xAxis);
+
+				// plot the gene exons and introns
+				
+				var genePadding = 25;
+				var geneHeight = 8;
+
+				gene.selectAll("rect")
+					.data(myGene)
+					.enter()
+					.append("rect")
+					.attr("x", function(d){return xScale(d.start) + leftPadding;})
+					.attr("y", function(d){
+						if (d.type == "exon") {return h - padding - axisPadding + genePadding;}
+						else return h - padding - axisPadding + genePadding + (geneHeight / 4);
+					})
+					.attr("fill", function(d){
+						if (d.type == "exon") {return "black"}
+						else return "grey";
+					})
+					.attr("width", function(d){return xScale(d.end) - xScale(d.start);})
+					.attr("height", function(d){
+						if (d.type == "exon") {return geneHeight}
+						else return geneHeight / 2;
+					});
+
+				// plot the gene exons and introns
+				
+				var primerPadding = 3;
+				var primerHeight = 12;
+
+				primers.selectAll("rect")
+					.data(myPrimers)
+					.enter()
+					.append("rect")
+					.attr("x", function(d){return xScale(d.start) + leftPadding;})
+					//.attr("y", h - padding - axisPadding + genePadding + geneHeight + primerPadding)
+					.attr("y", h - padding - axisPadding + genePadding - (geneHeight / 4))
+					.attr("fill", "purple")
+					.attr("fill-opacity", 0.5)
+					.attr("width", function(d){return xScale(d.end) - xScale(d.start);})
+					.attr("height", primerHeight);
+			
+			}
+				
+
+		</script>
+	</body>
+</html>
